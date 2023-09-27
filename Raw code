@@ -1,0 +1,65 @@
+代码来自于文章
+Application of machine learning to explore the genomic prediction accuracy of fall dormancy in autotetraploid alfalfa
+
+
+##linux命令行直接运行
+vcftools --vcf mdp_genotype.vcf --min-alleles 2 --max-alleles 2 --maf 0.05 --recode --recode-INFO-all --out snp_maf0.05_allele2.vcf #过滤双等位基因
+plink --vcf snp_maf0.05_allele2.vcf --indep-pairwise 100 50 0.2 --out snp_LD_filter.vcf --allow-extra-chr --make-bed #过滤LD
+plink --vcf snp_LD_filter.vcf --extract snp_filter.vcf.prune.in --out prunData --recode 12 --allow-extra-chr #挑选LD保存的标记，生成vcf文件
+perl /mnt/e/GWAS_model_test/tassel_v5/run_pipeline.pl -fork1 -plink -ped prunData.ped -map prunData.map -export snp_use_LD.vcf -exportType VCF -runfork1 #转换回vcf文件
+java -Xmx5g -jar beagle.22Jul22.46e.jar nthreads=20 gt=snp_use_LD.vcf out=snp_use_impute_out #利用beagle软件填充缺失值
+gzip -d snp_use_impute_out.vcf.gz #解压
+perl change_vcf_format_impute.pl snp_use_impute_out.vcf > snp_numeric_format.vcf #改成数值型格式，把0|0改成0,0|1改成1,1|1改成2
+cut -f3,10- snp_numeric_format.vcf > R_use_format.vcf #去掉不需要的列
+grep -v '^#' R_use_format.vcf >R_use_format1.vcf #去掉注释信息，生成模型构建需要用的文件
+
+from sklearn import datasets, linear_model 
+from sklearn.linear_model import Ridge
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import ElasticNet
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.metrics import mean_squared_error, r2_score 
+from sklearn.svm import SVR
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNetCV #前面几行都是加载用到的模块
+import numpy as np
+import pandas as pd
+import scipy as sp
+import statsmodels.api as sm #这几行是加载一下处理数据用到的包
+data = pd.read_csv('R_use_format1.vcf',sep="\t",index_col=0) #把第一步处理的数据导入
+data1=data.T ##转置一下数据，行列转换
+phe = pd.read_csv('Pheno.txt',sep="\t",index_col=0) #把表型导入
+index=phe.index ##把个体名称提取一下
+data1 = data1.reindex(index = index) #对应表型和基因型数据的个体信息
+use_phe=phe["dormancy_ind_mean_all"] #挑选需要的表型
+use_phe=use_phe[use_phe.notna()] #去掉表型为NA的个体
+GD1=data1.loc[use_phe.index] #把基因型数据也去掉对应的个体
+data_results={} #定义一个导出数据的文件
+for i in range(100):
+        train_y = use_phe.sample(frac =.8) #拆分出80%个体为建模群体
+        train_x = GD1.loc[train_y.index] #得到对应的80%基因型数据
+        test_y = use_phe.drop(train_y.index,axis=0) #剩下20%个体作为验证群体
+        test_x = GD1.drop(train_y.index,axis=0) #20%个体对应的基因型数据
+#########这块可以更换不同的模型，把#键换一下就好###########
+        #regr = Ridge(alpha=0.1) #岭回归模型
+        #regr = linear_model.Lasso(alpha=0.1) #lasso模型
+        #regr = ElasticNet(random_state=0) #ElasticNet模型
+        #regr = KernelRidge(alpha=1.0) #KernelRidge模型
+        #regr = PLSRegression(n_components=2) #PLSRegression模型
+        #regr = ElasticNetCV(cv=5, random_state=0) #ElasticNetCV模型
+        #regr = SVR(kernel="linear", C=100, gamma="auto") #SVR-linear模型
+        regr = SVR(kernel="poly", C=100, gamma="auto") #SVR-poly模型
+        #regr = linear_model.LinearRegression() #线性模型
+##########不同模型##########################################
+        regr.fit(train_x, train_y.values.ravel()) #构建模型
+        y_pred = regr.predict(test_x) #预测表型
+        y_pred = pd.DataFrame(y_pred) #修改表型格式
+        test_all=test_y.reset_index() #修改验证表型的个体顺序
+        test_all['Pred_y']=y_pred #把预测表型跟验证表型合并一下
+        test_all.columns = ['taxa', 'Real_Y', 'Predicted_Y'] #增加表头
+        corr = test_all['Real_Y'].corr(test_all['Predicted_Y']) ##calculate correlation info ##预测数据和真实数据相关性
+        #coef = sm.OLS(test_all['Predicted_Y'], test_all['Real_Y']).fit().params[0] ##回归系数
+        data_results[i]=corr #存储结构
+
+test_all=pd.DataFrame.from_dict(data_results, orient='index') #保存数据
+test_all.to_csv('alfalfa_100rep_ind_mean_SVR_poly_coefficient.csv', sep=',') #导出数据到csv格式
