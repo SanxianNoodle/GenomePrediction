@@ -21,11 +21,11 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.metrics import mean_squared_error, r2_score 
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import ElasticNetCV #前面几行都是加载用到的模块
+from sklearn.linear_model import ElasticNetCV 
 import numpy as np
 import pandas as pd
 import scipy as sp
-import statsmodels.api as sm #这几行是加载一下处理数据用到的包
+import statsmodels.api as sm
 data = pd.read_csv('R_use_format1.vcf',sep="\t",index_col=0) #把第一步处理的数据导入
 data1=data.T ##转置一下数据，行列转换
 phe = pd.read_csv('Pheno.txt',sep="\t",index_col=0) #把表型导入
