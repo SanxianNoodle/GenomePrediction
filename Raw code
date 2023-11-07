@@ -22,6 +22,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import ElasticNetCV 
+from sklearn.exceptions import ConvergenceWarning
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -31,7 +32,7 @@ data1=data.T ##转置一下数据，行列转换
 phe = pd.read_csv('Pheno.txt',sep="\t",index_col=0) #把表型导入
 index=phe.index ##把个体名称提取一下
 data1 = data1.reindex(index = index) #对应表型和基因型数据的个体信息
-use_phe=phe["dormancy_ind_mean_all"] #挑选需要的表型
+use_phe=phe["L"] #挑选需要的表型
 use_phe=use_phe[use_phe.notna()] #去掉表型为NA的个体
 GD1=data1.loc[use_phe.index] #把基因型数据也去掉对应的个体
 data_results={} #定义一个导出数据的文件
