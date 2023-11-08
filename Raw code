@@ -13,6 +13,16 @@ perl change_vcf_format_impute.pl snp_use_impute_out.vcf > snp_numeric_format.vcf
 cut -f3,10- snp_numeric_format.vcf > R_use_format.vcf #去掉不需要的列
 grep -v '^#' R_use_format.vcf >R_use_format1.vcf #去掉注释信息，生成模型构建需要用的文件
 
+######过滤
+bcftools view --types snps -m 2 -M 2 -q 0.05:minor Meta.vcf > A_GS/GS_ML.vcf ##过滤双等位基因频率
+plink --vcf GS_ML.vcf --indep-pairwise 100 50 0.2 --out /public/home/hanwei/GS/Predict/1/snp_LD_filter --allow-extra-chr --make-bed  ##LD过滤（prune）
+plink --bfile snp_LD_filter --extract snp_LD_filter.prune.in --out prunData --recode 12 --allow-extra-chr  ##筛选相关位点（extract）
+run_pipeline.pl -fork1 -plink -ped prunData.ped -map prunData.map -export snp_use_LD.vcf -exportType VCF -runfork1  ###使用TASSEL转换文件
+beagle nthreads=20 gt=snp_use_LD.vcf out=snp_impute  ###beagle 填充（可使用beagle5.2和4.1，5.2的填充速率快于4.1）
+cat snp_impute.vcf | awk -v OFS="\t" '{if(/#/)print $0;else{gsub(/0\|0/,"0");gsub(/0\|1|1\|0/,"1");gsub(/1\|1/,"2");$9="DS";print $0}}' | less -S ###基因型转换为数值型
+cat snp_impute.vcf | awk -v OFS="\t" '{if(/#/)print $0;else{gsub(/0\|0/,"0");gsub(/0\|1|1\|0/,"1");gsub(/1\|1/,"2");print $0}}' | cut -f3,10- | grep -v '^#' > Input.vcf  ##直接生成可使用的基因型文件
+
+
 from sklearn import datasets, linear_model 
 from sklearn.linear_model import Ridge
 from sklearn.kernel_ridge import KernelRidge
@@ -27,7 +37,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import statsmodels.api as sm
-data = pd.read_csv('R_use_format1.vcf',sep="\t",index_col=0) #把第一步处理的数据导入
+data = pd.read_csv('Input.vcf',sep="\t",index_col=0) #把第一步处理的数据导入
 data1=data.T ##转置一下数据，行列转换
 phe = pd.read_csv('Pheno.txt',sep="\t",index_col=0) #把表型导入
 index=phe.index ##把个体名称提取一下
@@ -49,6 +59,10 @@ for i in range(100):
         #regr = PLSRegression(n_components=2) #PLSRegression模型
         #regr = ElasticNetCV(cv=5, random_state=0) #ElasticNetCV模型
         #regr = SVR(kernel="linear", C=100, gamma="auto") #SVR-linear模型
+        ### 调用SVR的核函数linear在进行预测时的实测速度过慢，尝试过sklearn.svm.LinearSVR模块中的LinearSVR函数（灵活程度要高，速度也快），
+        ### Similar to SVR with parameter kernel=’linear’, but implemented in terms of liblinear rather than libsvm, 
+        ### so it has more flexibility in the choice of penalties and loss functions and should scale better to large numbers of samples.
+
         regr = SVR(kernel="poly", C=100, gamma="auto") #SVR-poly模型
         #regr = linear_model.LinearRegression() #线性模型
 ##########不同模型##########################################
@@ -57,7 +71,7 @@ for i in range(100):
         y_pred = pd.DataFrame(y_pred) #修改表型格式
         test_all=test_y.reset_index() #修改验证表型的个体顺序
         test_all['Pred_y']=y_pred #把预测表型跟验证表型合并一下
-        test_all.columns = ['taxa', 'Real_Y', 'Predicted_Y'] #增加表头
+        test_all.columns = ['taxa', 'Real_Y', 'Predicted_Y'] #增加表头，taxa为样本名称/ID
         corr = test_all['Real_Y'].corr(test_all['Predicted_Y']) ##calculate correlation info ##预测数据和真实数据相关性
         #coef = sm.OLS(test_all['Predicted_Y'], test_all['Real_Y']).fit().params[0] ##回归系数
         data_results[i]=corr #存储结构
