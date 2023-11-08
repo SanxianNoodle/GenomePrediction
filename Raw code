@@ -59,9 +59,10 @@ for i in range(100):
         #regr = PLSRegression(n_components=2) #PLSRegression模型
         #regr = ElasticNetCV(cv=5, random_state=0) #ElasticNetCV模型
         #regr = SVR(kernel="linear", C=100, gamma="auto") #SVR-linear模型
-        ### 调用SVR的核函数linear在进行预测时的实测速度过慢，尝试过sklearn.svm.LinearSVR模块中的LinearSVR函数（灵活程度要高，速度也快），
+        ### 调用SVR的核函数linear在进行预测时的实测速度过慢，尝试过sklearn.svm.LinearSVR模块中的LinearSVR（灵活程度要高，速度也快），
         ### Similar to SVR with parameter kernel=’linear’, but implemented in terms of liblinear rather than libsvm, 
         ### so it has more flexibility in the choice of penalties and loss functions and should scale better to large numbers of samples.
+        ### https://scikit-learn.org/stable/modules/generated/sklearn.svm.LinearSVR.html（LinearSVR）
 
         regr = SVR(kernel="poly", C=100, gamma="auto") #SVR-poly模型
         #regr = linear_model.LinearRegression() #线性模型
